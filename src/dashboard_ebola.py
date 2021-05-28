@@ -23,6 +23,11 @@ import argparse
 import json
 Oranges = sequential.Oranges
 Greys = sequential.Greys
+Blues = sequential.Blues
+Greens = sequential.Greens
+Reds = sequential.Reds
+Purples = sequential.Purples
+
 
 
 import os
@@ -37,10 +42,17 @@ import plotly.io as pio
 
 
 # Definicion de variables
+# Definicion de variables
 
+# w - Parametro que mide el impacto de la guerra (afecta al numero de infectados y la disminucion en hospitalizacion)
+# w esta entre cero y uno
+w = 0.8
+# beta - Es una funcion de w que representa impacto de la guerra y la tasa de contacto
+def beta_w(w, beta_max = 0.4, k =10, A = 100):
+    return beta_max / (1 + A * np.exp(-k * w))
 # S - Poblacion susceptible
 S = 86000000
-# Q - Poblacion en cuarentena
+#Q- Poblacion en cuarentena
 Q = 0.0
 # I - Poblacion Infectada
 I = 2619
@@ -52,99 +64,58 @@ R = 0
 D = 1729
 # N - Poblacion total
 N = S + Q + I + H + R + D
-
-w = 0.8
-Gamma = 0.005
-Omega = 0.005
-epsilon = 0.00001
-omega = 0.00001
-phi = 0.0001
-q = 0.1
-
-# Dias - dias de simulacion
-dias = 10
+# delta_i - tasa de hopitalización de los infecciosos
+delta_i = 0.1
+#delta_q - tasa de hospitalización de los de cuarentena
+delta_q= 0.4
+# gamma_i - tasa de recuperacion infecciosos (Tarda 18 dias en recuperarse y lo hace en 60% de los casos)
+gamma_i = 1/18 * 0.6
+# gamma_h - tasa de recuperacion de los hospitalizados
+gamma_h = 1/18 * 0.8
+# sigma_n - tasa de muerte de los infecciosos
+sigma_i = 1/8.5 * 0.4
+# sigma_h - tasa de muerte hospitalizados
+sigma_h = 1/8.5 * 0.2
+# mu - tasa de muerte natural
+mu = 1/ (63*12)
+# rho - tasa de deshecho de cuerpos
+rho = 1/30
+# alpha_h - tasa de infeccion en hospitales 
+alpha_h = 0.5
+# alpha_m - tasa de infeccion de muertos 
+alpha_m = 0.9
+# q - tasa de cuarentena
+q = 0.3
+# v - tasa de vacunacion
+v = 0.15
+#  pi - Tasa de natalidad
+pi = 1.7
+# Dias - dias se simulacion
+dias = 1000
+# lambda
+lam = 0.1
 
 
 # ------------------------------------------------------------------------------------------
-
-
-def lambda_x(Beta, I, H, D, N, alpha_h=0.5, alpha_m=0.9):
+def diff_eqs(INP, t, w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi):
     """
-    Esta función calcula la tasa de contagio de acuerdo a:
-    Beta - La tasa de contacto
-    I - El número de infectados
-    H - El número de hospitalizados
-    D - El número de muertos
-    N - La población total
-    alpha_h - Tasa de contagio de hospitalizados
-    alpha_m - Tasa de contaagio de muertos
+    Sistema de ecuaciones diferenciales.
     """
-
-    return Beta * (I + alpha_h * H + alpha_m * D) / N
-
-
-def beta_w(w=0.8, beta_max=400, k=10, A=100, tipo=None):
-
-    if tipo == 's':
-
-        resp = beta_max / (1 + A * np.exp(-k * w))
-
-    elif tipo == 'a':
-
-        resp = beta_max / (1 + A * np.exp(-k * w))
-
-    else:
-
-        print('\n\tTipo no válido. Debe ser "a" o "s"\n')
-
-    return resp
-
-
-def modelo(pob_compartimiento, Gamma, Omega, epsilon, omega, phi, q, pi=1.7, delta_i=0.4, delta_q=0.1, gamma_h=1/4.4, gamma_i=1/10.8, mu=1/756, rho=1/30, sigma_h=1/1.7, sigma_i=1/3.8, v=0.15):
-    """
-    Sistema de ecuaciones diferenciales con los siguientes parámetros:
-    Gamma - Tasa se supesión de la cuarentena
-    Omega - Tasa de contagio de los individuos en cuarentena
-    delta_i - Tasa de personas hospitalizadas provieniente del compartimiento de infectados
-    delta_q - Tasa de personas hospitalizadas provieniente del compartimiento de cuarentena
-    epsilon - Tasa de pérdida de inmunidad en vacunados
-    gamma_h - Tasa de recuparación para los hispitalizados
-    gamma_i - Tasa de recuparación para los infectados
-    mu - Tasa de muerte natural
-    omega - Nivel de estabilidad en la región
-    phi - Tasa de recaida
-    pi - Tasa de reclutamiento
-    q - Tasa de ingreso a cuarentena
-    rho - Tasa de desecho de los cuerpos
-    sigma_h - Tasa de mortalidad de los individuos que recibieron atención médica
-    sigma_i - Tasa de mortalidad de los individuos infectados no hospitalizados
-    v - Tasa de vacunación
-    """
-
     # Cantidades actuales de cada compartimento
-    S, Q, I, H, R, D = pob_compartimiento
-
+    S, Q, I, H, R, D = INP
     # Total de la poblacion
     N = S + Q + I + R + H + D
     
-    Beta_s = beta_w(w, tipo='s')               # Tasa de contacto efectivo de subpoblación asintomática a susceptible
-    Beta_a = beta_w(w, tipo='a')
+    beta = beta_w(w)               # Tasa de contacto efectivo de subpoblación asintomática a susceptible
     
-    lambda_s = lambda_x(Beta_s, I, H, D, N)
-    lambda_a = lambda_x(Beta_a, I, H, D, N)
+    lam = beta * (I + alpha_h * H + alpha_m * D)/N
     
-    dSdt = pi - (lambda_s + lambda_a + (1 - omega) * v + mu + q + epsilon) * S + Omega * Q
-
-    dQdt = q * S - ((1 - omega) * delta_q - mu - Gamma - Omega) * Q
-
-    dIdt = lambda_s * S - ((1 - omega) * delta_i + gamma_i + sigma_i + mu) * I + phi * R + Gamma * Q
-
-    dHdt = (1 - omega) * (delta_q * Q + delta_i * I) - (sigma_h + gamma_h + mu) * H
-
-    dRdt = (1 - omega) * v * S + gamma_i * I + gamma_h * H - mu * R - phi * R + lambda_a * S - epsilon * R
-
-    dDdt = sigma_i * I + sigma_h * H - rho * D
-
+    dSdt = pi - (lam + v + mu + q) * S
+    dQdt = q * S - (1-w) * delta_q * Q - mu * Q
+    dIdt = lam * S - ((1-w) * delta_i + gamma_i + sigma_i + mu) * I
+    dHdt = (1-w) * (delta_q * Q + delta_i * I) - (sigma_h + gamma_h + mu) * H
+    dRdt = v * S + gamma_i * I + gamma_h * H - mu * R
+    dDdt = sigma_i  * I + sigma_h * H - rho * D
     return [dSdt, dQdt, dIdt, dHdt, dRdt, dDdt]
 
 # -----------------------------------------------------------------------------------
@@ -152,18 +123,13 @@ def modelo(pob_compartimiento, Gamma, Omega, epsilon, omega, phi, q, pi=1.7, del
 
 def ode_solver(t, initial_conditions, params):
     S, Q, I, H, R, D = initial_conditions
-
-    Gamma, Omega, epsilon, omega, phi, q = params
-
-    res = odeint(modelo, [S, Q, I, H, R, D], t, args=(Gamma, Omega, epsilon, omega, phi, q))
-
+    w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi = params
+    res = odeint(diff_eqs, [S, Q, I, H, R, D], t, args=(w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi))
     return res
 
 
 # ---------------------------------------------------------------------------------
-initial_conditions = [S, Q, I, H, R, D]
-params = (Gamma, Omega, epsilon, omega, phi, q)
-# -----------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------
 
 
 # Dashboard
@@ -177,15 +143,96 @@ app.layout = html.Div([
     html.Div([
         html.Div(className='menus-desplegables3',
             children=[
-                html.Div(className='histograma-proceso',
+
+                html.Div(className='opciones-dias',
                     children=[
+                        html.Label(['Duración:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
-                            id='dias',
-                            options=[{'label':'10', 'value':'10'}] + [{'label':p, 'value':p} for p in list(range(10, 1000, 50))],
-                            value='10',
+                            id='dropdown-dias',
+                            options=[{'label':'10 días', 'value':'10'}] + [{'label': str(p) + ' días', 'value':p} for p in list(range(0, 1000, 50))],
+                            value='100',
                             clearable=False)
                     ],
-                    style=dict(width='25%')),
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-susceptibles',
+                    children=[
+                        html.Label(['Susceptibles:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-s',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=S,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-cuarentena',
+                    children=[
+                        html.Label(['Cuarentena:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-q',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=Q,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-infectados',
+                    children=[
+                        html.Label(['Infectados:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-i',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=I,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-hospitalizados',
+                    children=[
+                        html.Label(['Hospitalizados:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-h',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=H,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+
+                html.Div(className='opciones-recuperados',
+                    children=[
+                        html.Label(['Recuperados:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-r',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=R,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-fallecidos',
+                    children=[
+                        html.Label(['Muertes:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-d',
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            value=D,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
+                html.Div(className='opciones-inestabilidad',
+                    children=[
+                        html.Label(['Nivel de inestabilidad:'], style={'font-weight': 'bold', "text-align": "center"}),
+                        dcc.Dropdown(
+                            id='dropdown-w',
+                            options=[{'label': str(p / 10.0), 'value' : p / 10.0 } for p in list(range(0, 10, 1))],
+                            value=w,
+                            clearable=False)
+                    ],
+                    style=dict(width='10%')),
+
                 ],
             style=dict(display='flex')
         ),
@@ -198,10 +245,19 @@ app.layout = html.Div([
 @app.callback(
     Output('enfermedad-en-tiempo', 'figure'), 
     [
-        Input('dias', 'value')
+        Input('dropdown-dias', 'value')
+        , Input('dropdown-s', 'value')
+        , Input('dropdown-q', 'value')
+        , Input('dropdown-i', 'value')
+        , Input('dropdown-h', 'value')
+        , Input('dropdown-r', 'value')
+        , Input('dropdown-d', 'value')
+        , Input('dropdown-w', 'value')
     ])
-def update_graph(dias):
+def update_graph(dias, S, Q, I, H, R, D, w):
 
+    initial_conditions = [S, Q, I, H, R, D]
+    params = (w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi)
     periodo = np.arange(0, int(dias), 1)
     sol = ode_solver(periodo, initial_conditions, params)
     S, Q, I, H, R, D = sol[:, 0], sol[:, 1], sol[:, 2], sol[:, 3], sol[:, 4], sol[:, 5]
@@ -214,10 +270,10 @@ def update_graph(dias):
         go.Scatter(
             y=S
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[0])
+            , marker=dict(color=Greens[5])
             , mode='lines+markers'
             , name='S'
-            , hovertext='S'
+            , hovertext='Susceptibles'
             )
         , row=1
         , col=1)
@@ -226,9 +282,10 @@ def update_graph(dias):
         go.Scatter(
             y=Q
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[1])
+            , marker=dict(color=Purples[5])
             , mode='lines+markers'
             , name='Q'
+            , hovertext='Cuarentena'
             )
         , row=1
         , col=1)
@@ -237,9 +294,10 @@ def update_graph(dias):
         go.Scatter(
             y=I
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[2])
+            , marker=dict(color=Reds[5])
             , mode='lines+markers'
             , name='I'
+            , hovertext='Infectados'
             )
         , row=1
         , col=1)
@@ -248,9 +306,10 @@ def update_graph(dias):
         go.Scatter(
             y=H
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[3])
+            , marker=dict(color=Oranges[5])
             , mode='lines+markers'
             , name='H'
+            , hovertext='Hospitalizados'
             )
         , row=1
         , col=1)
@@ -260,9 +319,10 @@ def update_graph(dias):
         go.Scatter(
             y=R
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[4])
+            , marker=dict(color=Blues[5])
             , mode='lines+markers'
             , name='R'
+            , hovertext='Recuperados'
             )
         , row=1
         , col=1)
@@ -271,27 +331,17 @@ def update_graph(dias):
         go.Scatter(
             y=D
             , x=list(range(len(S)))
-            , marker=dict(color=Greys[5])
+            , marker=dict(color=Greys[6])
             , mode='lines+markers'
             , name='D'
+            , hovertext='Muertes'
             )
         , row=1
         , col=1)
 
-    # fig.add_trace(
-    #     go.Scatter(
-    #         x=tiempo_dask.num
-    #         , y=tiempo_dask.duration
-    #         , marker=dict(color=Oranges[4])
-    #         , mode='lines+markers'
-    #         , name='Dask'
-    #         )
-    #     , row=1
-    #     , col=1)
 
-
-    fig.update_xaxes(title_text='Número de casos', title_font={'size':12}, showgrid=False, row=1, col=1)
-    fig.update_yaxes(title_text='Días', title_font={'size':12}, showgrid=False, row=1, col=1)
+    fig.update_xaxes(title_text='Días', title_font={'size':12}, showgrid=False, row=1, col=1)
+    fig.update_yaxes(title_text='Número de casos', title_font={'size':12}, showgrid=False, row=1, col=1)
     # Actualizamos el tamano y titulo del grafico y ubicacion de los titulos y posicion del bloque
     fig.update_layout(title_text="Modelo Epidemiológico de Ébola"
         , title_font={'size':25}
