@@ -65,19 +65,23 @@ D = 1729
 # N - Poblacion total
 N = S + Q + I + H + R + D
 # delta_i - tasa de hopitalización de los infecciosos
-delta_i = 0.1
+delta_i = 0.008 # 0.4 # 0.1 / 12
 #delta_q - tasa de hospitalización de los de cuarentena
-delta_q= 0.4
+delta_q= 0.1
 # gamma_i - tasa de recuperacion infecciosos (Tarda 18 dias en recuperarse y lo hace en 60% de los casos)
-gamma_i = 1/18 * 0.6
+gamma_i = 0.0003
 # gamma_h - tasa de recuperacion de los hospitalizados
-gamma_h = 1/18 * 0.8
-# sigma_n - tasa de muerte de los infecciosos
-sigma_i = 1/8.5 * 0.4
+gamma_h = 0.0008
+# sigma_i - tasa de muerte de los infecciosos
+sigma_i = 0.007 # 1/3.8
 # sigma_h - tasa de muerte hospitalizados
-sigma_h = 1/8.5 * 0.2
+sigma_h = 0.005 # 1/1.7
+#  pi - Tasa de natalidad
+# pi = 1/(63*12*30) # 1.7
+pi = 1.7
 # mu - tasa de muerte natural
-mu = 1/ (63*12)
+# mu = 1/(63*12*30)
+mu = 1 / 756
 # rho - tasa de deshecho de cuerpos
 rho = 1/30
 # alpha_h - tasa de infeccion en hospitales 
@@ -85,19 +89,28 @@ alpha_h = 0.5
 # alpha_m - tasa de infeccion de muertos 
 alpha_m = 0.9
 # q - tasa de cuarentena
-q = 0.3
+q =  0.3 # 0.0476
 # v - tasa de vacunacion
 v = 0.15
-#  pi - Tasa de natalidad
-pi = 1.7
 # Dias - dias se simulacion
 dias = 1000
 # lambda
-lam = 0.1
+# lam = 0.1
+# *************************************************************************
+# ************************ NUEVOS PARAMETROS ******************************
+lam_s = 0.1 # 1.8787826654817788e-05 # Parametro place holder / Tasa de infección de sinomáticos
+lam_a = 0.1 # 1.8787826654817788e-05 # Parametro place holder / Tasa de infección de asintomáticos
+epsilon = 0.0001 # Parametro place holder / Pérdida de inmunidad de vacunados
+Omega = 0.003 # Parametro place holder / Son los que salen de cuarentena
+Gamma = 0.0002 # Parametro place holder  / Se infectan estando en cuarentena
+psi = 0.0000033 # Parametro place holder / Tasa de recaída (Como Herpes-Zoster)
+# *************************************************************************
+# ************************ NUEVOS PARAMETROS ******************************
 
+# print('\n\nNUEVO\n\n')
 
 # ------------------------------------------------------------------------------------------
-def diff_eqs(INP, t, w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi):
+def diff_eqs(INP, t, w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, rho, alpha_h, alpha_m, q, v, pi, lam_s, lam_a, epsilon, Omega, Gamma, psi):
     """
     Sistema de ecuaciones diferenciales.
     """
@@ -105,17 +118,22 @@ def diff_eqs(INP, t, w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu
     S, Q, I, H, R, D = INP
     # Total de la poblacion
     N = S + Q + I + R + H + D
-    
+    # print(N)
     beta = beta_w(w)               # Tasa de contacto efectivo de subpoblación asintomática a susceptible
-    
+
     lam = beta * (I + alpha_h * H + alpha_m * D)/N
+
+    # print(lam)
     
-    dSdt = pi - (lam + v + mu + q) * S
-    dQdt = q * S - (1-w) * delta_q * Q - mu * Q
-    dIdt = lam * S - ((1-w) * delta_i + gamma_i + sigma_i + mu) * I
-    dHdt = (1-w) * (delta_q * Q + delta_i * I) - (sigma_h + gamma_h + mu) * H
-    dRdt = v * S + gamma_i * I + gamma_h * H - mu * R
-    dDdt = sigma_i  * I + sigma_h * H - rho * D
+    # Nuevas; 
+
+    dSdt = pi - (lam_s + lam_a + (1 - w) * v + mu + q) * S + epsilon * R + Omega * Q # pi - (lam + v + mu + q) * S
+    dQdt = q * S - (mu + Gamma + Omega) * Q # q * S - (1-w) * delta_q * Q - mu * Q
+    dIdt = lam_s * S - ((1 - w) * delta_i + gamma_i + sigma_i + mu) * I + (1 - psi) * R + Gamma * Q
+    dHdt = (1 - w) * (delta_i * I) - (sigma_h + gamma_h + mu) * H
+    dRdt = (1 - w) * v * S + gamma_i * I + gamma_h * H - mu * R - (1 - psi) * R + lam_a * S - epsilon * R
+    dDdt = sigma_i * I + sigma_h * H - rho * D
+
     return [dSdt, dQdt, dIdt, dHdt, dRdt, dDdt]
 
 # -----------------------------------------------------------------------------------
@@ -123,8 +141,8 @@ def diff_eqs(INP, t, w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu
 
 def ode_solver(t, initial_conditions, params):
     S, Q, I, H, R, D = initial_conditions
-    w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi = params
-    res = odeint(diff_eqs, [S, Q, I, H, R, D], t, args=(w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi))
+    w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, rho, alpha_h, alpha_m, q, v, pi, lam_s, lam_a, epsilon, Omega, Gamma, psi = params
+    res = odeint(diff_eqs, [S, Q, I, H, R, D], t, args=(w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, rho, alpha_h, alpha_m, q, v, pi, lam_s, lam_a, epsilon, Omega, Gamma, psi))
     return res
 
 
@@ -160,7 +178,7 @@ app.layout = html.Div([
                         html.Label(['Susceptibles:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-s',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=S,
                             clearable=False)
                     ],
@@ -171,7 +189,7 @@ app.layout = html.Div([
                         html.Label(['Cuarentena:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-q',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=Q,
                             clearable=False)
                     ],
@@ -182,7 +200,7 @@ app.layout = html.Div([
                         html.Label(['Infectados:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-i',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=I,
                             clearable=False)
                     ],
@@ -193,7 +211,7 @@ app.layout = html.Div([
                         html.Label(['Hospitalizados:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-h',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=H,
                             clearable=False)
                     ],
@@ -205,7 +223,7 @@ app.layout = html.Div([
                         html.Label(['Recuperados:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-r',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=R,
                             clearable=False)
                     ],
@@ -216,7 +234,7 @@ app.layout = html.Div([
                         html.Label(['Muertes:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-d',
-                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 500000))],
+                            options=[{'label':'10 personas', 'value':'10'}] + [{'label': str(p) + ' personas', 'value':p} for p in list(range(0, int(N), 5000000))],
                             value=D,
                             clearable=False)
                     ],
@@ -227,7 +245,7 @@ app.layout = html.Div([
                         html.Label(['Nivel de inestabilidad:'], style={'font-weight': 'bold', "text-align": "center"}),
                         dcc.Dropdown(
                             id='dropdown-w',
-                            options=[{'label': str(p / 10.0), 'value' : p / 10.0 } for p in list(range(0, 10, 1))],
+                            options=[{'label': str(p / 10.0), 'value' : p / 10.0 } for p in list(range(0, 11, 1))],
                             value=w,
                             clearable=False)
                     ],
@@ -257,7 +275,7 @@ app.layout = html.Div([
 def update_graph(dias, S, Q, I, H, R, D, w):
 
     initial_conditions = [S, Q, I, H, R, D]
-    params = (w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, lam, rho, alpha_h, alpha_m, q, v, pi)
+    params = (w, delta_i, delta_q, gamma_i, gamma_h, sigma_h, sigma_i, mu, rho, alpha_h, alpha_m, q, v, pi, lam_s, lam_a, epsilon, Omega, Gamma, psi)
     periodo = np.arange(0, int(dias), 1)
     sol = ode_solver(periodo, initial_conditions, params)
     S, Q, I, H, R, D = sol[:, 0], sol[:, 1], sol[:, 2], sol[:, 3], sol[:, 4], sol[:, 5]
